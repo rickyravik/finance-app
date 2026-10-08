@@ -44,7 +44,7 @@ export async function askLocalAI(
         stream: false,
         options: { temperature: 0, num_predict: 800 },
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(120000),
       redirect: "error",
     });
     if (!response.ok)
