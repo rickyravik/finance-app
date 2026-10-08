@@ -88,3 +88,43 @@ it("returns controlled errors for invalid payloads", async () => {
     ).status,
   ).toBe(400);
 });
+it("returns reserve policy and audit log in overview", async () => {
+  const response = await send({ action: "overview" });
+  expect(response.status).toBe(200);
+  const data = await response.json();
+  expect(typeof data.reservePolicy).toBe("number");
+  expect(Array.isArray(data.audit)).toBe(true);
+  expect(data.audit.length).toBeGreaterThan(0);
+});
+it("deletes rules, adjusts accounts, and updates reserve policy via API", async () => {
+  await send({
+    action: "rule",
+    match: "TestRule",
+    category: "Groceries",
+    role: "essential",
+    priority: 5,
+  });
+  const rule = repository().rules().find((r) => r.match === "TestRule")!;
+  expect(rule).toBeDefined();
+
+  const delRes = await send({ action: "deleteRule", id: rule.id });
+  expect(delRes.status).toBe(200);
+  expect(repository().rules().find((r) => r.id === rule.id)).toBeUndefined();
+
+  const adjRes = await send({
+    action: "adjustAccount",
+    id: "bos:test",
+    balance: 55000,
+  });
+  expect(adjRes.status).toBe(200);
+  expect(repository().accounts().find((a) => a.id === "bos:test")?.balance).toBe(
+    55000,
+  );
+
+  const polRes = await send({
+    action: "setReservePolicy",
+    reserve: 80000,
+  });
+  expect(polRes.status).toBe(200);
+  expect(repository().reservePolicy()).toBe(80000);
+});

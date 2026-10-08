@@ -5,6 +5,7 @@ import {
   roles,
   money,
   type Account,
+  type AuditEntry,
   type Plan,
   type Rule,
   type Transaction,
@@ -19,6 +20,8 @@ type Data = {
   demo: boolean;
   today: string;
   starlingConfigured: boolean;
+  reservePolicy: number;
+  audit: AuditEntry[];
 };
 type ForecastResult = {
   result: ReturnType<typeof forecast>;
@@ -69,6 +72,10 @@ export default function Dashboard() {
     total: number;
   }>();
   const [prediction, setPrediction] = useState<ForecastResult>();
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [adjustingAccountId, setAdjustingAccountId] = useState<string | null>(
+    null,
+  );
   const [answer, setAnswer] = useState<{
     answer: string;
     evidence: unknown[];
@@ -180,6 +187,8 @@ export default function Dashboard() {
               setPreview(undefined);
               setAnswer(undefined);
               setPrediction(undefined);
+              setEditingPlan(null);
+              setAdjustingAccountId(null);
             }}
           >
             Lock session
@@ -254,7 +263,64 @@ export default function Dashboard() {
                           {new Date(a.asOf).toLocaleString("en-GB")}
                         </small>
                       </div>
-                      <strong>{gbp(a.available)}</strong>
+                      {adjustingAccountId === a.id ? (
+                        <form
+                          className="inline"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const f = fields(e.currentTarget);
+                            void run(async () => {
+                              await api({
+                                action: "adjustAccount",
+                                id: a.id,
+                                balance: money(String(f.balance)),
+                              });
+                              setAdjustingAccountId(null);
+                              await refresh();
+                              setNotice(`Balance updated for ${a.name}.`);
+                            });
+                          }}
+                        >
+                          <label className="sr-only" htmlFor={`bal-${a.id}`}>
+                            New balance for {a.name}
+                          </label>
+                          <input
+                            id={`bal-${a.id}`}
+                            name="balance"
+                            defaultValue={(a.available / 100).toFixed(2)}
+                            required
+                            style={{ maxWidth: "120px" }}
+                          />
+                          <button disabled={busy}>Save</button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() => setAdjustingAccountId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                          }}
+                        >
+                          <strong>{gbp(a.available)}</strong>
+                          {a.provider !== "starling" && !data.demo && (
+                            <button
+                              className="secondary"
+                              disabled={busy}
+                              onClick={() => setAdjustingAccountId(a.id)}
+                            >
+                              Adjust
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -307,17 +373,89 @@ export default function Dashboard() {
                 </button>
               </section>
             </div>
-            <section className="decision">
-              <div>
-                <h2>What would a move change?</h2>
+            <div className="columns">
+              <section>
+                <h2>Reserve policy</h2>
                 <p>
-                  Compare rent, council tax, heating and moving costs against
-                  your current plans.
+                  Target cash buffer for planning. Safe-to-spend is measured
+                  above this safety cushion.
                 </p>
-              </div>
-              <button onClick={() => setTab("Plans & scenarios")}>
-                Explore a scenario
-              </button>
+                <form
+                  className="inline"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = fields(e.currentTarget);
+                    void run(async () => {
+                      await api({
+                        action: "setReservePolicy",
+                        reserve: money(String(f.reserve)),
+                      });
+                      await refresh();
+                      setNotice("Reserve policy updated.");
+                    });
+                  }}
+                >
+                  <label className="sr-only" htmlFor="reserve-policy-input">
+                    Target cash reserve (£)
+                  </label>
+                  <input
+                    id="reserve-policy-input"
+                    name="reserve"
+                    defaultValue={(data.reservePolicy / 100).toFixed(2)}
+                    required
+                    style={{ maxWidth: "140px" }}
+                  />
+                  <button disabled={busy}>Save target</button>
+                </form>
+                <p className="muted">
+                  Current target: {gbp(data.reservePolicy)}
+                </p>
+              </section>
+              <section className="decision">
+                <div>
+                  <h2>What would a move change?</h2>
+                  <p>
+                    Compare rent, council tax, heating and moving costs against
+                    your current plans.
+                  </p>
+                </div>
+                <button onClick={() => setTab("Plans & scenarios")}>
+                  Explore a scenario
+                </button>
+              </section>
+            </div>
+            <section>
+              <h2>Audit activity log</h2>
+              <p className="muted">
+                Recent operations and ledger mutations. Local records are not
+                tamper-proof.
+              </p>
+              {data.audit.length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Action</th>
+                        <th>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.audit.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{new Date(entry.at).toLocaleString("en-GB")}</td>
+                          <td>
+                            <code>{entry.action}</code>
+                          </td>
+                          <td className="amount">{entry.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>No audit activity recorded yet.</p>
+              )}
             </section>
           </>
         )}
@@ -373,9 +511,27 @@ export default function Dashboard() {
                 <button disabled={busy}>Save rule</button>
               </form>
               {data.rules.map((r) => (
-                <p key={r.id} className="muted">
-                  {r.match} → {r.category} / {r.role} (priority {r.priority})
-                </p>
+                <div className="ledger-row" key={r.id}>
+                  <div>
+                    <strong>{r.match}</strong>
+                    <small>
+                      {r.category} · {r.role} · priority {r.priority}
+                    </small>
+                  </div>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await api({ action: "deleteRule", id: r.id });
+                        await refresh();
+                        setNotice("Rule removed and transactions re-evaluated.");
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
               ))}
             </section>
             <section>
@@ -470,15 +626,17 @@ export default function Dashboard() {
                 forecasts; detected patterns do not enter automatically.
               </p>
               <form
+                key={editingPlan ? editingPlan.id : "new"}
                 className="form-grid"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = fields(e.currentTarget);
                   void run(async () => {
+                    const id = editingPlan ? editingPlan.id : crypto.randomUUID();
                     await api({
                       action: "plan",
                       plan: {
-                        id: crypto.randomUUID(),
+                        id,
                         name: f.name,
                         amount: money(String(f.amount)),
                         day: Number(f.day),
@@ -488,18 +646,37 @@ export default function Dashboard() {
                         ...(f.end ? { end: f.end } : {}),
                       },
                     });
+                    setEditingPlan(null);
                     await refresh();
-                    setNotice("Monthly plan saved.");
+                    setNotice(
+                      editingPlan
+                        ? "Monthly plan updated."
+                        : "Monthly plan saved.",
+                    );
                   });
                 }}
               >
                 <label>
                   Name
-                  <input name="name" required maxLength={100} />
+                  <input
+                    name="name"
+                    defaultValue={editingPlan?.name ?? ""}
+                    required
+                    maxLength={100}
+                  />
                 </label>
                 <label>
                   Monthly amount (£)
-                  <input name="amount" placeholder="-150.00" required />
+                  <input
+                    name="amount"
+                    defaultValue={
+                      editingPlan
+                        ? (editingPlan.amount / 100).toFixed(2)
+                        : ""
+                    }
+                    placeholder="-150.00"
+                    required
+                  />
                 </label>
                 <label>
                   Day of month
@@ -508,32 +685,58 @@ export default function Dashboard() {
                     type="number"
                     min="1"
                     max="31"
-                    defaultValue="1"
+                    defaultValue={editingPlan?.day ?? 1}
                     required
                   />
                 </label>
                 <label>
                   Category
-                  <Choices name="category" values={categories} />
+                  <Choices
+                    name="category"
+                    values={categories}
+                    initial={editingPlan?.category}
+                  />
                 </label>
                 <label>
                   Role
-                  <Choices name="role" values={roles} initial="essential" />
+                  <Choices
+                    name="role"
+                    values={roles}
+                    initial={editingPlan?.role ?? "essential"}
+                  />
                 </label>
                 <label>
                   Starts
                   <input
                     name="start"
                     type="date"
-                    defaultValue={data.today}
+                    defaultValue={editingPlan?.start ?? data.today}
                     required
                   />
                 </label>
                 <label>
                   Ends (optional)
-                  <input name="end" type="date" />
+                  <input
+                    name="end"
+                    type="date"
+                    defaultValue={editingPlan?.end ?? ""}
+                  />
                 </label>
-                <button disabled={busy}>Add monthly plan</button>
+                <div style={{ display: "flex", gap: "10px", alignSelf: "end" }}>
+                  <button disabled={busy}>
+                    {editingPlan ? "Update plan" : "Add monthly plan"}
+                  </button>
+                  {editingPlan && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => setEditingPlan(null)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
               {data.plans.map((p) => (
                 <div className="ledger-row" key={p.id}>
@@ -545,18 +748,28 @@ export default function Dashboard() {
                     </small>
                   </div>
                   <strong>{gbp(p.amount)}</strong>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        await api({ action: "deletePlan", id: p.id });
-                        await refresh();
-                      })
-                    }
-                  >
-                    Remove
-                  </button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => setEditingPlan(p)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          if (editingPlan?.id === p.id) setEditingPlan(null);
+                          await api({ action: "deletePlan", id: p.id });
+                          await refresh();
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
             </section>
@@ -615,7 +828,11 @@ export default function Dashboard() {
                 </label>
                 <label>
                   Cash reserve (£)
-                  <input name="reserve" defaultValue="500" required />
+                  <input
+                    name="reserve"
+                    defaultValue={(data.reservePolicy / 100).toFixed(0)}
+                    required
+                  />
                 </label>
                 <label>
                   New rent (£, optional)

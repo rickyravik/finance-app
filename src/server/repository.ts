@@ -3,7 +3,13 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { categorise } from "../domain/engine";
-import type { Account, Plan, Rule, Transaction } from "../domain/model";
+import type {
+  Account,
+  AuditEntry,
+  Plan,
+  Rule,
+  Transaction,
+} from "../domain/model";
 export class Repository {
   readonly db: DatabaseSync;
   constructor(path: string) {
@@ -50,6 +56,29 @@ export class Repository {
     this.db
       .prepare("INSERT INTO audit VALUES(?,?,?,?)")
       .run(randomUUID(), new Date().toISOString(), action, count);
+  }
+  auditLog(limit = 50): AuditEntry[] {
+    return this.db
+      .prepare(
+        "SELECT id, at, action, count FROM audit ORDER BY at DESC LIMIT ?",
+      )
+      .all(limit) as unknown as AuditEntry[];
+  }
+  reservePolicy(): number {
+    const row = this.db
+      .prepare("SELECT value FROM settings WHERE key='reserve_policy'")
+      .get() as { value: string } | undefined;
+    return row ? Number(row.value) : 50_000;
+  }
+  setReservePolicy(amount: number) {
+    this.atomic(() => {
+      this.db
+        .prepare(
+          "INSERT INTO settings(key, value) VALUES('reserve_policy', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        )
+        .run(String(amount));
+      this.audit("reserve-policy-updated", 1);
+    });
   }
   atomic<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
@@ -140,6 +169,32 @@ export class Repository {
           .run(JSON.stringify(categorise(t, rules)), t.id);
       this.audit("rule-update", 1);
     });
+  }
+  deleteRule(id: string) {
+    this.atomic(() => {
+      this.db.prepare("DELETE FROM rules WHERE id=?").run(id);
+      const rules = this.rules();
+      for (const t of this.transactions())
+        this.db
+          .prepare("UPDATE transactions SET body=? WHERE id=?")
+          .run(JSON.stringify(categorise(t, rules)), t.id);
+      this.audit("rule-delete", 1);
+    });
+  }
+  adjustAccountBalance(id: string, balance: number): Account {
+    const existing = this.accounts().find((a) => a.id === id);
+    if (!existing) throw new Error("Account not found");
+    const updated: Account = {
+      ...existing,
+      balance,
+      available: balance,
+      asOf: new Date().toISOString(),
+    };
+    this.atomic(() => {
+      this.saveAccount(updated);
+      this.audit("account-balance-adjusted", 1);
+    });
+    return updated;
   }
   saveScenario(input: unknown) {
     const id = randomUUID();

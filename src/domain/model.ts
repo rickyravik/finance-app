@@ -76,6 +76,12 @@ export interface Rule {
   role: Role;
   priority: number;
 }
+export interface AuditEntry {
+  id: string;
+  at: string;
+  action: string;
+  count: number;
+}
 export const planSchema = z
   .object({
     id: z.string().min(1),

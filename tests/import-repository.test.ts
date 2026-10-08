@@ -76,3 +76,46 @@ it("rolls back accounts and all rows when an import fails", () => {
   expect(repo.transactions()).toEqual([]);
   repo.close();
 });
+it("deletes rules and re-evaluates uncorrected transactions", () => {
+  const repo = new Repository(":memory:");
+  const rows = importBos(
+    "Date,Description,Amount\n2026-10-01,Tesco,-10",
+    "bos:a",
+  ).transactions;
+  repo.import([account], rows);
+  repo.saveRule({
+    id: "rule-tesco",
+    match: "Tesco",
+    category: "Groceries",
+    role: "essential",
+    priority: 10,
+  });
+  expect(repo.transactions()[0].category).toBe("Groceries");
+  repo.deleteRule("rule-tesco");
+  expect(repo.rules()).toHaveLength(0);
+  expect(repo.transactions()[0].category).toBe("Uncategorised");
+  repo.close();
+});
+it("adjusts manual account balance, records audit entry and handles missing account", () => {
+  const repo = new Repository(":memory:");
+  repo.saveAccount(account);
+  const updated = repo.adjustAccountBalance("bos:a", 25000);
+  expect(updated.balance).toBe(25000);
+  expect(updated.available).toBe(25000);
+  expect(repo.accounts()[0].available).toBe(25000);
+  expect(() => repo.adjustAccountBalance("unknown", 1000)).toThrow(
+    "Account not found",
+  );
+  const logs = repo.auditLog();
+  expect(logs[0].action).toBe("account-balance-adjusted");
+  repo.close();
+});
+it("persists reserve policy and provides default", () => {
+  const repo = new Repository(":memory:");
+  expect(repo.reservePolicy()).toBe(50000);
+  repo.setReservePolicy(75000);
+  expect(repo.reservePolicy()).toBe(75000);
+  const logs = repo.auditLog();
+  expect(logs[0].action).toBe("reserve-policy-updated");
+  repo.close();
+});

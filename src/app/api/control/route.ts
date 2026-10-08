@@ -42,6 +42,16 @@ const command = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("plan"), plan: planSchema }),
   z.object({ action: z.literal("deletePlan"), id: z.string() }),
+  z.object({ action: z.literal("deleteRule"), id: z.string().min(1) }),
+  z.object({
+    action: z.literal("adjustAccount"),
+    id: z.string().min(1),
+    balance: pence,
+  }),
+  z.object({
+    action: z.literal("setReservePolicy"),
+    reserve: pence.nonnegative(),
+  }),
   z.object({
     action: z.literal("scenario"),
     input: scenarioSchema,
@@ -86,6 +96,8 @@ export async function POST(request: Request) {
           demo: repo.demo(),
           today: isoToday(),
           starlingConfigured: !!process.env.STARLING_PERSONAL_TOKEN,
+          reservePolicy: repo.reservePolicy(),
+          audit: repo.auditLog(),
         });
       case "import": {
         if (repo.demo())
@@ -142,6 +154,18 @@ export async function POST(request: Request) {
           repo.db.prepare("DELETE FROM plans WHERE id=?").run(cmd.id);
           repo.audit("plan-delete", 1);
         });
+        return Response.json({ ok: true });
+      case "deleteRule":
+        repo.deleteRule(cmd.id);
+        return Response.json({ ok: true });
+      case "adjustAccount": {
+        if (repo.demo())
+          throw new Error("Cannot adjust accounts in demo mode");
+        repo.adjustAccountBalance(cmd.id, cmd.balance);
+        return Response.json({ ok: true });
+      }
+      case "setReservePolicy":
+        repo.setReservePolicy(cmd.reserve);
         return Response.json({ ok: true });
       case "scenario": {
         const opening = repo.accounts().reduce((s, a) => s + a.available, 0);
@@ -200,6 +224,8 @@ export async function POST(request: Request) {
       "Enter a current",
       "Choose a past",
       "Transaction not found",
+      "Account not found",
+      "Cannot adjust",
       "Unknown tool",
       "CSV exceeds",
       "Amount must",
