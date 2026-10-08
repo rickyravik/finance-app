@@ -43,8 +43,33 @@ repo.atomic(() => {
       "Exceptional",
       "lifestyle",
     ],
-  ] as const)
+  ] as const) {
     repo.savePlan({ id, name, amount, day, category, role, start: today });
+  }
+  repo.saveGoal({
+    id: "demo:goal:emergency",
+    name: "Emergency reserve goal",
+    targetAmount: 500000,
+    currentAmount: 285000,
+    targetDate: monthlyDate(today, 6, 1),
+    category: "Savings",
+  });
+  repo.saveAssetLiability({
+    id: "demo:al:isa",
+    name: "Stocks & Shares ISA · fictional",
+    type: "asset",
+    amount: 850000,
+    category: "Investments",
+    asOf: today,
+  });
+  repo.saveAssetLiability({
+    id: "demo:al:loan",
+    name: "Education loan · fictional",
+    type: "liability",
+    amount: 1420000,
+    category: "Debt",
+    asOf: today,
+  });
 });
 for (let month = -3; month <= 0; month++) {
   for (const [merchant, amount, day, category, role] of [

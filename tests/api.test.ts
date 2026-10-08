@@ -128,3 +128,64 @@ it("deletes rules, adjusts accounts, and updates reserve policy via API", async 
   expect(polRes.status).toBe(200);
   expect(repository().reservePolicy()).toBe(80000);
 });
+it("creates, retrieves, and deletes goals and assets/liabilities via API", async () => {
+  const goalRes = await send({
+    action: "goal",
+    goal: {
+      id: "goal-api",
+      name: "Emergency Fund",
+      targetAmount: 500000,
+      currentAmount: 200000,
+      targetDate: "2027-12-01",
+      category: "Savings",
+    },
+  });
+  expect(goalRes.status).toBe(200);
+
+  const alRes = await send({
+    action: "assetLiability",
+    item: {
+      id: "al-api",
+      name: "Mortgage",
+      type: "liability",
+      amount: 15000000,
+      category: "Mortgage",
+      asOf: "2026-10-01",
+    },
+  });
+  expect(alRes.status).toBe(200);
+
+  const overviewRes = await send({ action: "overview" });
+  const overviewData = await overviewRes.json();
+  expect(overviewData.goals.some((g: { id: string }) => g.id === "goal-api")).toBe(true);
+  expect(overviewData.assetsLiabilities.some((al: { id: string }) => al.id === "al-api")).toBe(true);
+  expect(typeof overviewData.netWorth).toBe("object");
+
+  const delGoal = await send({ action: "deleteGoal", id: "goal-api" });
+  expect(delGoal.status).toBe(200);
+  const delAl = await send({ action: "deleteAssetLiability", id: "al-api" });
+  expect(delAl.status).toBe(200);
+});
+it("exports and restores encrypted backups via API", async () => {
+  const exportRes = await send({
+    action: "exportBackup",
+    passphrase: "password1234",
+  });
+  expect(exportRes.status).toBe(200);
+  const { encrypted } = await exportRes.json();
+  expect(typeof encrypted).toBe("string");
+
+  const restoreRes = await send({
+    action: "restoreBackup",
+    encrypted,
+    passphrase: "password1234",
+  });
+  expect(restoreRes.status).toBe(200);
+
+  const badRestoreRes = await send({
+    action: "restoreBackup",
+    encrypted,
+    passphrase: "wrong-password-999",
+  });
+  expect(badRestoreRes.status).toBe(400);
+});

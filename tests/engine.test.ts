@@ -12,6 +12,8 @@ import {
   monthlyDate,
   recurring,
   spending,
+  calculateNetWorth,
+  projectGoal,
 } from "../src/domain/engine";
 const tx = (changes: Partial<Transaction> = {}): Transaction => ({
   id: "t",
@@ -205,5 +207,69 @@ describe("cash-flow scenarios", () => {
       forecast(-100, [], { from: "2026-10-01", days: 1, reserve: 1000 })
         .safeToSpend,
     ).toBe(0);
+  });
+});
+
+describe("net worth calculation", () => {
+  it("sums cash and assets and subtracts liabilities", () => {
+    const items = [
+      {
+        id: "1",
+        name: "Property",
+        type: "asset" as const,
+        amount: 30000000,
+        category: "Property",
+        asOf: "2026-10-01",
+      },
+      {
+        id: "2",
+        name: "Mortgage",
+        type: "liability" as const,
+        amount: 22000000,
+        category: "Mortgage",
+        asOf: "2026-10-01",
+      },
+      {
+        id: "3",
+        name: "ISA",
+        type: "asset" as const,
+        amount: 500000,
+        category: "Investments",
+        asOf: "2026-10-01",
+      },
+    ];
+    const res = calculateNetWorth(250000, items);
+    expect(res.cash).toBe(250000);
+    expect(res.assets).toBe(30500000);
+    expect(res.liabilities).toBe(22000000);
+    expect(res.netWorth).toBe(8750000);
+  });
+});
+
+describe("goal projection", () => {
+  it("calculates required monthly savings and checks on-track status", () => {
+    const goal = {
+      id: "g1",
+      name: "House Deposit",
+      targetAmount: 1200000,
+      currentAmount: 600000,
+      targetDate: "2027-04-01",
+      category: "Savings" as const,
+    };
+    const savingsPlans = [
+      plan({
+        id: "p1",
+        amount: -100000,
+        category: "Savings",
+        role: "saving",
+      }),
+    ];
+    const proj = projectGoal(goal, savingsPlans, "2026-10-01");
+    expect(proj.remainingPence).toBe(600000);
+    expect(proj.percentComplete).toBe(50);
+    expect(proj.monthsRemaining).toBe(6);
+    expect(proj.monthlyRequired).toBe(100000);
+    expect(proj.monthlyAllocated).toBe(100000);
+    expect(proj.onTrack).toBe(true);
   });
 });

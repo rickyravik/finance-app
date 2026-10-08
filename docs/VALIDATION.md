@@ -2,7 +2,7 @@
 
 Verified with synthetic fixtures on 8 October 2026.
 
-- 34 automated tests: exact signed money, real calendar dates, month-end clamping, rule priority, deletion and correction preservation, refund/transfer/pending semantics, recurrence grouping, daily lows, housing replacement, reserves, CSV parsing and repeated imports, atomic rollback, fixed-host read-only Starling calls, safe provider errors, local access gate, controlled Ollama tool calls, API preview/commit, scenario execution, plan editing, manual balance adjustments, reserve policy persistence and audit log retrieval.
+- 44 automated tests: exact signed money, real calendar dates, month-end clamping, rule priority, deletion and correction preservation, refund/transfer/pending semantics, recurrence grouping, daily lows, housing replacement, reserves, CSV parsing and repeated imports, atomic rollback, fixed-host read-only Starling calls, safe provider errors, local access gate, controlled Ollama tool calls, API preview/commit, scenario execution, plan editing, manual balance adjustments, reserve policy persistence, audit log retrieval, goal tracking and projections, net worth calculation, AES-256-GCM encrypted backup/restore, and atomic database restoration.
 - TypeScript check passes (`npm run typecheck`).
 - Next.js production build passes (`npm run build`).
 - Dependency audit reports zero known vulnerabilities after upgrading csv-parse to 7.0.3.

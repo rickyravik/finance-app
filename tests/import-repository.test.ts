@@ -119,3 +119,54 @@ it("persists reserve policy and provides default", () => {
   expect(logs[0].action).toBe("reserve-policy-updated");
   repo.close();
 });
+it("manages goals and assets/liabilities with audit entries", () => {
+  const repo = new Repository(":memory:");
+  repo.saveGoal({
+    id: "g1",
+    name: "Holiday",
+    targetAmount: 200000,
+    currentAmount: 50000,
+    targetDate: "2027-06-01",
+  });
+  expect(repo.goals()).toHaveLength(1);
+  expect(repo.goals()[0].name).toBe("Holiday");
+  repo.deleteGoal("g1");
+  expect(repo.goals()).toHaveLength(0);
+
+  repo.saveAssetLiability({
+    id: "al-1",
+    name: "Car loan",
+    type: "liability",
+    amount: 500000,
+    category: "Loans",
+    asOf: "2026-10-01",
+  });
+  expect(repo.assetsLiabilities()).toHaveLength(1);
+  expect(repo.assetsLiabilities()[0].name).toBe("Car loan");
+  repo.deleteAssetLiability("al-1");
+  expect(repo.assetsLiabilities()).toHaveLength(0);
+  repo.close();
+});
+it("exports and restores database atomically", () => {
+  const repo = new Repository(":memory:");
+  repo.saveAccount(account);
+  repo.saveGoal({
+    id: "g-backup",
+    name: "Emergency Fund",
+    targetAmount: 500000,
+    currentAmount: 100000,
+    targetDate: "2027-12-01",
+  });
+  const backup = repo.exportBackup();
+  expect(backup.accounts).toHaveLength(1);
+  expect(backup.goals).toHaveLength(1);
+
+  // Restore into a fresh repo
+  const newRepo = new Repository(":memory:");
+  newRepo.restoreBackup(backup);
+  expect(newRepo.accounts()).toHaveLength(1);
+  expect(newRepo.goals()).toHaveLength(1);
+  expect(newRepo.goals()[0].name).toBe("Emergency Fund");
+  repo.close();
+  newRepo.close();
+});

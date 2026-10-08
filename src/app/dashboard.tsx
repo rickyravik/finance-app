@@ -5,17 +5,27 @@ import {
   roles,
   money,
   type Account,
+  type AssetLiability,
   type AuditEntry,
+  type Goal,
   type Plan,
   type Rule,
   type Transaction,
 } from "@/domain/model";
-import type { forecast, recurring } from "@/domain/engine";
+import {
+  type forecast,
+  type recurring,
+  type calculateNetWorth,
+  projectGoal,
+} from "@/domain/engine";
 type Data = {
   accounts: Account[];
   transactions: Transaction[];
   plans: Plan[];
   rules: Rule[];
+  goals: Goal[];
+  assetsLiabilities: AssetLiability[];
+  netWorth: ReturnType<typeof calculateNetWorth>;
   recurring: ReturnType<typeof recurring>;
   demo: boolean;
   today: string;
@@ -73,9 +83,12 @@ export default function Dashboard() {
   }>();
   const [prediction, setPrediction] = useState<ForecastResult>();
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [adjustingAccountId, setAdjustingAccountId] = useState<string | null>(
     null,
   );
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [restorePassphrase, setRestorePassphrase] = useState("");
   const [answer, setAnswer] = useState<{
     answer: string;
     evidence: unknown[];
@@ -188,6 +201,7 @@ export default function Dashboard() {
               setAnswer(undefined);
               setPrediction(undefined);
               setEditingPlan(null);
+              setEditingGoal(null);
               setAdjustingAccountId(null);
             }}
           >
@@ -422,6 +436,168 @@ export default function Dashboard() {
                 <button onClick={() => setTab("Plans & scenarios")}>
                   Explore a scenario
                 </button>
+              </section>
+            </div>
+            <div className="columns">
+              <section>
+                <h2>Assets & liabilities</h2>
+                <p>
+                  Track non-cash assets, mortgages, loans and debts for a full picture.
+                </p>
+                <form
+                  className="stack"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const f = fields(e.currentTarget);
+                    void run(async () => {
+                      await api({
+                        action: "assetLiability",
+                        item: {
+                          id: crypto.randomUUID(),
+                          name: String(f.name),
+                          type: f.type as "asset" | "liability",
+                          amount: money(String(f.amount)),
+                          category: String(f.category),
+                          asOf: String(f.asOf),
+                        },
+                      });
+                      (e.target as HTMLFormElement).reset();
+                      await refresh();
+                      setNotice("Asset / liability saved.");
+                    });
+                  }}
+                >
+                  <label>
+                    Name
+                    <input
+                      name="name"
+                      required
+                      maxLength={100}
+                      placeholder="e.g. Property, Vanguard ISA, Mortgage"
+                    />
+                  </label>
+                  <label>
+                    Classification
+                    <select name="type" defaultValue="asset">
+                      <option value="asset">Asset (property, pension, investments)</option>
+                      <option value="liability">Liability (mortgage, loan, debt)</option>
+                    </select>
+                  </label>
+                  <label>
+                    Amount (£)
+                    <input name="amount" required placeholder="50000.00" />
+                  </label>
+                  <label>
+                    Category
+                    <input
+                      name="category"
+                      required
+                      maxLength={100}
+                      defaultValue="General"
+                    />
+                  </label>
+                  <label>
+                    Valuation date
+                    <input
+                      name="asOf"
+                      type="date"
+                      defaultValue={data.today}
+                      required
+                    />
+                  </label>
+                  <button disabled={busy}>Add item</button>
+                </form>
+                {data.assetsLiabilities.length ? (
+                  data.assetsLiabilities.map((al) => (
+                    <div className="ledger-row" key={al.id}>
+                      <div>
+                        <strong>{al.name}</strong>
+                        <small>
+                          {al.type === "asset" ? "Asset" : "Liability"} · {al.category} · {al.asOf}
+                        </small>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color: al.type === "liability" ? "#863324" : undefined,
+                          }}
+                        >
+                          {al.type === "liability"
+                            ? `-${gbp(al.amount)}`
+                            : gbp(al.amount)}
+                        </strong>
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            void run(async () => {
+                              await api({
+                                action: "deleteAssetLiability",
+                                id: al.id,
+                              });
+                              await refresh();
+                            })
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">
+                    No external assets or liabilities recorded yet.
+                  </p>
+                )}
+              </section>
+              <section>
+                <h2>Total net worth</h2>
+                <p>
+                  Balance sheet combining liquid bank accounts, non-cash assets and liabilities.
+                </p>
+                <div
+                  className="summary"
+                  style={{ gridTemplateColumns: "1fr", padding: "12px 0 20px" }}
+                >
+                  <div>
+                    <span>Total Net Worth</span>
+                    <strong>{gbp(data.netWorth.netWorth)}</strong>
+                    <small>Cash + non-cash assets − liabilities</small>
+                  </div>
+                </div>
+                <div className="ledger-row">
+                  <div>
+                    <strong>Available cash</strong>
+                    <small>{data.accounts.length} accounts</small>
+                  </div>
+                  <strong>{gbp(data.netWorth.cash)}</strong>
+                </div>
+                <div className="ledger-row">
+                  <div>
+                    <strong>Recorded assets</strong>
+                    <small>Investments, pensions, property</small>
+                  </div>
+                  <strong>{gbp(data.netWorth.assets)}</strong>
+                </div>
+                <div className="ledger-row">
+                  <div>
+                    <strong>Liabilities & debt</strong>
+                    <small>Mortgages, loans, borrowing</small>
+                  </div>
+                  <strong
+                    style={{
+                      color: data.netWorth.liabilities > 0 ? "#863324" : undefined,
+                    }}
+                  >
+                    -{gbp(data.netWorth.liabilities)}
+                  </strong>
+                </div>
               </section>
             </div>
             <section>
@@ -911,6 +1087,150 @@ export default function Dashboard() {
                 </div>
               )}
             </section>
+            <section>
+              <h2>Financial goals</h2>
+              <p>
+                Target savings milestones, emergency cushions and major purchases. Projections calculate required monthly contributions and check if your savings plans keep you on track.
+              </p>
+              <form
+                key={editingGoal ? editingGoal.id : "new-goal"}
+                className="form-grid"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = fields(e.currentTarget);
+                  void run(async () => {
+                    const id = editingGoal ? editingGoal.id : crypto.randomUUID();
+                    await api({
+                      action: "goal",
+                      goal: {
+                        id,
+                        name: String(f.name),
+                        targetAmount: money(String(f.targetAmount)),
+                        currentAmount: money(String(f.currentAmount)),
+                        targetDate: String(f.targetDate),
+                        category:
+                          (f.category as (typeof categories)[number]) ||
+                          undefined,
+                      },
+                    });
+                    setEditingGoal(null);
+                    await refresh();
+                    setNotice(editingGoal ? "Goal updated." : "Goal created.");
+                  });
+                }}
+              >
+                <label>
+                  Goal name
+                  <input
+                    name="name"
+                    required
+                    maxLength={100}
+                    defaultValue={editingGoal?.name ?? ""}
+                    placeholder="e.g. Emergency fund, House deposit"
+                  />
+                </label>
+                <label>
+                  Target amount (£)
+                  <input
+                    name="targetAmount"
+                    required
+                    defaultValue={
+                      editingGoal
+                        ? (editingGoal.targetAmount / 100).toFixed(2)
+                        : ""
+                    }
+                    placeholder="5000.00"
+                  />
+                </label>
+                <label>
+                  Current saved (£)
+                  <input
+                    name="currentAmount"
+                    required
+                    defaultValue={
+                      editingGoal
+                        ? (editingGoal.currentAmount / 100).toFixed(2)
+                        : "0.00"
+                    }
+                  />
+                </label>
+                <label>
+                  Target completion date
+                  <input
+                    name="targetDate"
+                    type="date"
+                    required
+                    defaultValue={editingGoal?.targetDate ?? data.today}
+                  />
+                </label>
+                <label>
+                  Associated category
+                  <Choices
+                    name="category"
+                    values={categories}
+                    initial={editingGoal?.category ?? "Savings"}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: "10px", alignSelf: "end" }}>
+                  <button disabled={busy}>
+                    {editingGoal ? "Update goal" : "Add goal"}
+                  </button>
+                  {editingGoal && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => setEditingGoal(null)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+              {data.goals.length ? (
+                data.goals.map((g) => {
+                  const proj = projectGoal(g, data.plans, data.today);
+                  return (
+                    <div className="ledger-row" key={g.id}>
+                      <div style={{ flex: 1 }}>
+                        <strong>{g.name}</strong>
+                        <small>
+                          Target: {gbp(g.targetAmount)} by {g.targetDate} · Saved: {gbp(g.currentAmount)} ({proj.percentComplete}%)
+                        </small>
+                        <small>
+                          Needs {gbp(proj.monthlyRequired)}/mo for {proj.monthsRemaining} months · Allocated savings: {gbp(proj.monthlyAllocated)}/mo · {proj.onTrack ? "✓ On track" : "⚠ Behind target"}
+                        </small>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() => setEditingGoal(g)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            void run(async () => {
+                              if (editingGoal?.id === g.id) setEditingGoal(null);
+                              await api({ action: "deleteGoal", id: g.id });
+                              await refresh();
+                              setNotice("Goal removed.");
+                            })
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="muted">No savings goals configured yet.</p>
+              )}
+            </section>
           </>
         )}
         {tab === "Connections" && (
@@ -1069,6 +1389,113 @@ export default function Dashboard() {
                 </p>
               </section>
             </div>
+            <section style={{ marginTop: "24px" }}>
+              <h2>Encrypted local backup & restore</h2>
+              <p>
+                Export or restore your personal ledger using AES-256-GCM encryption. Backups include accounts, transactions, categorisation rules, plans, goals and settings.
+              </p>
+              <div className="columns">
+                <div>
+                  <h3>Export encrypted backup</h3>
+                  <form
+                    className="stack"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void run(async () => {
+                        const res = await api({
+                          action: "exportBackup",
+                          passphrase: backupPassphrase,
+                        });
+                        const blob = new Blob([res.encrypted], {
+                          type: "application/json",
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `finance-backup-${data.today}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        setBackupPassphrase("");
+                        setNotice("Encrypted backup file downloaded.");
+                      });
+                    }}
+                  >
+                    <label>
+                      Encryption passphrase (minimum 8 characters)
+                      <input
+                        type="password"
+                        value={backupPassphrase}
+                        onChange={(e) => setBackupPassphrase(e.target.value)}
+                        required
+                        minLength={8}
+                        autoComplete="off"
+                        placeholder="Choose a passphrase"
+                      />
+                    </label>
+                    <button disabled={busy || backupPassphrase.length < 8}>
+                      Download encrypted backup
+                    </button>
+                  </form>
+                </div>
+                <div>
+                  <h3>Restore from backup</h3>
+                  <form
+                    className="stack"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      void run(async () => {
+                        const f = new FormData(form);
+                        const file = f.get("backupFile") as File;
+                        const encrypted = await file.text();
+                        if (
+                          !window.confirm(
+                            "Restoring will overwrite current accounts, plans, rules and transactions. Are you sure you wish to proceed?",
+                          )
+                        )
+                          return;
+                        await api({
+                          action: "restoreBackup",
+                          encrypted,
+                          passphrase: restorePassphrase,
+                        });
+                        setRestorePassphrase("");
+                        form.reset();
+                        await refresh();
+                        setNotice(
+                          "Database successfully restored from backup.",
+                        );
+                      });
+                    }}
+                  >
+                    <label>
+                      Backup file (.json)
+                      <input
+                        name="backupFile"
+                        type="file"
+                        accept=".json,application/json"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Decryption passphrase
+                      <input
+                        type="password"
+                        value={restorePassphrase}
+                        onChange={(e) => setRestorePassphrase(e.target.value)}
+                        required
+                        minLength={8}
+                        autoComplete="off"
+                        placeholder="Enter the backup's passphrase"
+                      />
+                    </label>
+                    <button disabled={busy || restorePassphrase.length < 8}>
+                      Restore ledger
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </section>
           </>
         )}
         {tab === "Local assistant" && (

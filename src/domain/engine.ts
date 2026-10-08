@@ -1,5 +1,7 @@
 import {
   addDays,
+  type AssetLiability,
+  type Goal,
   type Plan,
   type Rule,
   type Scenario,
@@ -147,5 +149,50 @@ export function forecast(opening: number, plans: Plan[], input: Scenario) {
     events,
     assumptions:
       "Daily GBP cash forecast from explicit monthly plans; debits first. Variable spending must be budgeted in plans. No statistical confidence interval.",
+  };
+}
+export function calculateNetWorth(
+  cashTotal: number,
+  items: AssetLiability[],
+) {
+  let assets = 0;
+  let liabilities = 0;
+  for (const item of items) {
+    if (item.type === "asset") assets += item.amount;
+    else if (item.type === "liability") liabilities += item.amount;
+  }
+  return {
+    cash: cashTotal,
+    assets,
+    liabilities,
+    netWorth: cashTotal + assets - liabilities,
+  };
+}
+export function projectGoal(goal: Goal, plans: Plan[], today: string) {
+  const remainingPence = Math.max(0, goal.targetAmount - goal.currentAmount);
+  const targetDays = Math.max(
+    1,
+    (Date.parse(goal.targetDate) - Date.parse(today)) / 86400000,
+  );
+  const monthsRemaining = Math.max(1, Math.ceil(targetDays / 30.4375));
+  const monthlyRequired = Math.ceil(remainingPence / monthsRemaining);
+  const relevantSavings = plans
+    .filter(
+      (p) =>
+        (p.role === "saving" || p.role === "investment") &&
+        (!goal.category || p.category === goal.category),
+    )
+    .reduce((s, p) => s + Math.abs(p.amount), 0);
+  const percentComplete = Math.min(
+    100,
+    Math.round((goal.currentAmount / goal.targetAmount) * 100),
+  );
+  return {
+    remainingPence,
+    monthsRemaining,
+    monthlyRequired,
+    monthlyAllocated: relevantSavings,
+    percentComplete,
+    onTrack: remainingPence === 0 || relevantSavings >= monthlyRequired,
   };
 }

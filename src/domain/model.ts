@@ -60,22 +60,24 @@ export const transactionSchema = z.object({
   corrected: z.boolean(),
 });
 export type Transaction = z.infer<typeof transactionSchema>;
-export interface Account {
-  id: string;
-  provider: "starling" | "bos" | "demo";
-  name: string;
-  currency: "GBP";
-  balance: number;
-  available: number;
-  asOf: string;
-}
-export interface Rule {
-  id: string;
-  match: string;
-  category: Category;
-  role: Role;
-  priority: number;
-}
+export const accountSchema = z.object({
+  id: z.string().min(1),
+  provider: z.enum(["starling", "bos", "demo"]),
+  name: z.string().min(1),
+  currency: z.literal("GBP"),
+  balance: pence,
+  available: pence,
+  asOf: z.string().min(1),
+});
+export type Account = z.infer<typeof accountSchema>;
+export const ruleSchema = z.object({
+  id: z.string().min(1),
+  match: z.string().min(1),
+  category: z.enum(categories),
+  role: z.enum(roles),
+  priority: z.number().int(),
+});
+export type Rule = z.infer<typeof ruleSchema>;
 export interface AuditEntry {
   id: string;
   at: string;
@@ -142,3 +144,39 @@ export const isoToday = () =>
   }).format(new Date());
 export const addDays = (s: string, n: number) =>
   new Date(Date.parse(s) + n * 86400000).toISOString().slice(0, 10);
+
+export const goalSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(100),
+  targetAmount: pence.positive(),
+  currentAmount: pence.nonnegative(),
+  targetDate: date,
+  category: z.enum(categories).optional(),
+});
+export type Goal = z.infer<typeof goalSchema>;
+
+export const assetLiabilityTypes = ["asset", "liability"] as const;
+export type AssetLiabilityType = (typeof assetLiabilityTypes)[number];
+
+export const assetLiabilitySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(100),
+  type: z.enum(assetLiabilityTypes),
+  amount: pence.nonnegative(),
+  category: z.string().min(1).max(100),
+  asOf: date,
+});
+export type AssetLiability = z.infer<typeof assetLiabilitySchema>;
+
+export const backupPayloadSchema = z.object({
+  version: z.literal(1),
+  exportedAt: z.string().min(1),
+  accounts: z.array(accountSchema),
+  transactions: z.array(transactionSchema),
+  rules: z.array(ruleSchema),
+  plans: z.array(planSchema),
+  goals: z.array(goalSchema),
+  assetsLiabilities: z.array(assetLiabilitySchema),
+  settings: z.record(z.string(), z.string()),
+});
+export type BackupPayload = z.infer<typeof backupPayloadSchema>;

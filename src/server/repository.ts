@@ -5,7 +5,10 @@ import { randomUUID } from "node:crypto";
 import { categorise } from "../domain/engine";
 import type {
   Account,
+  AssetLiability,
   AuditEntry,
+  BackupPayload,
+  Goal,
   Plan,
   Rule,
   Transaction,
@@ -24,6 +27,8 @@ export class Repository {
       CREATE TABLE IF NOT EXISTS rules(id TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS scenarios(id TEXT PRIMARY KEY, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS goals(id TEXT PRIMARY KEY, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS assets_liabilities(id TEXT PRIMARY KEY, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY, at TEXT NOT NULL, action TEXT NOT NULL, count INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
   }
@@ -45,6 +50,12 @@ export class Repository {
   }
   plans() {
     return this.read<Plan>("plans");
+  }
+  goals() {
+    return this.read<Goal>("goals");
+  }
+  assetsLiabilities() {
+    return this.read<AssetLiability>("assets_liabilities");
   }
   demo() {
     return (
@@ -195,6 +206,88 @@ export class Repository {
       this.audit("account-balance-adjusted", 1);
     });
     return updated;
+  }
+  saveGoal(g: Goal) {
+    this.atomic(() => {
+      this.db
+        .prepare(
+          "INSERT INTO goals VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
+        )
+        .run(g.id, JSON.stringify(g));
+      this.audit("goal-update", 1);
+    });
+  }
+  deleteGoal(id: string) {
+    this.atomic(() => {
+      this.db.prepare("DELETE FROM goals WHERE id=?").run(id);
+      this.audit("goal-delete", 1);
+    });
+  }
+  saveAssetLiability(al: AssetLiability) {
+    this.atomic(() => {
+      this.db
+        .prepare(
+          "INSERT INTO assets_liabilities VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
+        )
+        .run(al.id, JSON.stringify(al));
+      this.audit("asset-liability-update", 1);
+    });
+  }
+  deleteAssetLiability(id: string) {
+    this.atomic(() => {
+      this.db.prepare("DELETE FROM assets_liabilities WHERE id=?").run(id);
+      this.audit("asset-liability-delete", 1);
+    });
+  }
+  exportBackup(): BackupPayload {
+    const rows = this.db
+      .prepare("SELECT key, value FROM settings")
+      .all() as { key: string; value: string }[];
+    const settings: Record<string, string> = {};
+    for (const r of rows) settings[r.key] = r.value;
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      accounts: this.accounts(),
+      transactions: this.transactions(),
+      rules: this.rules(),
+      plans: this.plans(),
+      goals: this.goals(),
+      assetsLiabilities: this.assetsLiabilities(),
+      settings,
+    };
+  }
+  restoreBackup(backup: BackupPayload) {
+    this.atomic(() => {
+      this.db.exec("DELETE FROM transactions;");
+      this.db.exec("DELETE FROM accounts;");
+      this.db.exec("DELETE FROM rules;");
+      this.db.exec("DELETE FROM plans;");
+      this.db.exec("DELETE FROM goals;");
+      this.db.exec("DELETE FROM assets_liabilities;");
+      this.db.exec("DELETE FROM settings;");
+      for (const a of backup.accounts) this.saveAccount(a);
+      for (const t of backup.transactions)
+        this.db
+          .prepare("INSERT INTO transactions VALUES(?,?,?)")
+          .run(t.id, t.accountId, JSON.stringify(t));
+      for (const r of backup.rules)
+        this.db
+          .prepare("INSERT INTO rules VALUES(?,?)")
+          .run(r.id, JSON.stringify(r));
+      for (const p of backup.plans) this.savePlan(p);
+      for (const g of backup.goals)
+        this.db
+          .prepare("INSERT INTO goals VALUES(?,?)")
+          .run(g.id, JSON.stringify(g));
+      for (const al of backup.assetsLiabilities)
+        this.db
+          .prepare("INSERT INTO assets_liabilities VALUES(?,?)")
+          .run(al.id, JSON.stringify(al));
+      for (const [key, value] of Object.entries(backup.settings))
+        this.db.prepare("INSERT INTO settings VALUES(?,?)").run(key, value);
+      this.audit("database-restore", 1);
+    });
   }
   saveScenario(input: unknown) {
     const id = randomUUID();

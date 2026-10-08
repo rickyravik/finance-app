@@ -10,12 +10,15 @@ import {
   isoToday,
   pence,
   planSchema,
+  goalSchema,
+  assetLiabilitySchema,
   scenarioSchema,
 } from "@/domain/model";
-import { forecast, recurring } from "@/domain/engine";
+import { forecast, recurring, calculateNetWorth } from "@/domain/engine";
 import { importBos } from "@/providers/bos";
 import { StarlingAdapter } from "@/providers/starling";
 import { askLocalAI } from "@/server/ollama";
+import { encryptBackup, decryptBackup } from "@/server/backup";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const command = z.discriminatedUnion("action", [
@@ -52,6 +55,22 @@ const command = z.discriminatedUnion("action", [
     action: z.literal("setReservePolicy"),
     reserve: pence.nonnegative(),
   }),
+  z.object({ action: z.literal("goal"), goal: goalSchema }),
+  z.object({ action: z.literal("deleteGoal"), id: z.string().min(1) }),
+  z.object({ action: z.literal("assetLiability"), item: assetLiabilitySchema }),
+  z.object({
+    action: z.literal("deleteAssetLiability"),
+    id: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("exportBackup"),
+    passphrase: z.string().min(8),
+  }),
+  z.object({
+    action: z.literal("restoreBackup"),
+    encrypted: z.string().min(1),
+    passphrase: z.string().min(8),
+  }),
   z.object({
     action: z.literal("scenario"),
     input: scenarioSchema,
@@ -86,12 +105,17 @@ export async function POST(request: Request) {
     const cmd = command.parse(JSON.parse(raw));
     const repo = repository();
     switch (cmd.action) {
-      case "overview":
+      case "overview": {
+        const cashTotal = repo.accounts().reduce((s, a) => s + a.available, 0);
+        const assetsLiabilities = repo.assetsLiabilities();
         return Response.json({
           accounts: repo.accounts(),
           transactions: repo.transactions(),
           rules: repo.rules(),
           plans: repo.plans(),
+          goals: repo.goals(),
+          assetsLiabilities,
+          netWorth: calculateNetWorth(cashTotal, assetsLiabilities),
           recurring: recurring(repo.transactions(), isoToday()),
           demo: repo.demo(),
           today: isoToday(),
@@ -99,6 +123,7 @@ export async function POST(request: Request) {
           reservePolicy: repo.reservePolicy(),
           audit: repo.auditLog(),
         });
+      }
       case "import": {
         if (repo.demo())
           throw new Error(
@@ -167,6 +192,28 @@ export async function POST(request: Request) {
       case "setReservePolicy":
         repo.setReservePolicy(cmd.reserve);
         return Response.json({ ok: true });
+      case "goal":
+        repo.saveGoal(cmd.goal);
+        return Response.json({ ok: true });
+      case "deleteGoal":
+        repo.deleteGoal(cmd.id);
+        return Response.json({ ok: true });
+      case "assetLiability":
+        repo.saveAssetLiability(cmd.item);
+        return Response.json({ ok: true });
+      case "deleteAssetLiability":
+        repo.deleteAssetLiability(cmd.id);
+        return Response.json({ ok: true });
+      case "exportBackup": {
+        const payload = repo.exportBackup();
+        const encrypted = encryptBackup(payload, cmd.passphrase);
+        return Response.json({ encrypted });
+      }
+      case "restoreBackup": {
+        const decrypted = decryptBackup(cmd.encrypted, cmd.passphrase);
+        repo.restoreBackup(decrypted);
+        return Response.json({ ok: true });
+      }
       case "scenario": {
         const opening = repo.accounts().reduce((s, a) => s + a.available, 0);
         const result = forecast(opening, repo.plans(), cmd.input);
@@ -229,6 +276,9 @@ export async function POST(request: Request) {
       "Unknown tool",
       "CSV exceeds",
       "Amount must",
+      "Passphrase must",
+      "Invalid backup",
+      "Unsupported backup",
     ];
     const message = e instanceof Error ? e.message : "";
     return Response.json(
