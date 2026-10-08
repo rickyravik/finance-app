@@ -1,0 +1,91 @@
+{
+  "components": [
+    {
+      "kind": "button",
+      "css": ".ds-primary{font:600 15px Arial,Helvetica,sans-serif;background:#245c47;color:white;border:1px solid #245c47;padding:10px 16px;border-radius:7px;cursor:pointer}.ds-primary:hover:not(:disabled){background:#174735}.ds-primary:disabled{opacity:.55;cursor:wait}.ds-primary:focus-visible{outline:3px solid #a36022;outline-offset:3px}",
+      "html": "<button class=\"ds-primary\">Explore a scenario</button>",
+      "description": "Main local action.",
+      "refersTo": "button-primary",
+      "name": "Primary button"
+    },
+    {
+      "kind": "button",
+      "css": ".ds-secondary{font:600 15px Arial,Helvetica,sans-serif;background:transparent;color:#245c47;border:1px solid #d6ddd5;padding:10px 16px;border-radius:7px;cursor:pointer}.ds-secondary:hover:not(:disabled){background:#174735}.ds-secondary:disabled{opacity:.55;cursor:wait}.ds-secondary:focus-visible{outline:3px solid #a36022;outline-offset:3px}",
+      "html": "<button class=\"ds-secondary\">Refresh view</button>",
+      "description": "Supporting action.",
+      "refersTo": "button-secondary",
+      "name": "Secondary button"
+    },
+    {
+      "description": "Native financial assumption field.",
+      "name": "Labelled field",
+      "kind": "input",
+      "html": "<label class=\"ds-label\">Monthly rent<input class=\"ds-field\" type=\"number\" value=\"1200\"></label>",
+      "css": ".ds-label{display:block;font:600 13px Arial,Helvetica,sans-serif;color:#202e29}.ds-field{display:block;width:100%;margin-top:5px;font:15px Arial,Helvetica,sans-serif;border:1px solid #a9b5ac;border-radius:6px;padding:9px 11px;background:white;color:#202e29}.ds-field:focus-visible{outline:3px solid #a36022;outline-offset:3px}"
+    },
+    {
+      "description": "Named view selection with sage active state.",
+      "name": "Navigation",
+      "kind": "nav",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-active\">Overview</button><button>Plans &amp; scenarios</button></nav>",
+      "css": ".ds-nav{display:grid;gap:7px;background:#ebeee6;padding:16px}.ds-nav button{font:500 15px Arial,Helvetica,sans-serif;text-align:left;background:transparent;color:#5e6b64;border:0;padding:12px;border-radius:7px;cursor:pointer}.ds-nav .ds-active{background:#d8e3d7;color:#1c4837;font-weight:700}.ds-nav button:hover{background:#d8e3d7;color:#202e29}.ds-nav button:focus-visible{outline:3px solid #a36022;outline-offset:3px}"
+    },
+    {
+      "kind": "card",
+      "css": ".ds-panel{font:15px/1.55 Arial,Helvetica,sans-serif;color:#202e29;background:white;border:1px solid #d6ddd5;border-radius:12px;padding:26px}.ds-panel h2{font-size:22px;line-height:1.25;margin:0 0 16px;letter-spacing:-.015em}.ds-row{display:flex;justify-content:space-between;gap:16px;padding:17px 0;border-bottom:1px solid #d6ddd5;font-variant-numeric:tabular-nums}",
+      "html": "<section class=\"ds-panel\"><h2>Your accounts</h2><div class=\"ds-row\"><strong>Current account</strong><strong>£2,500.00</strong></div></section>",
+      "description": "Flat reading surface with an account row.",
+      "refersTo": "panel",
+      "name": "Ledger panel"
+    }
+  ],
+  "extensions": {
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "value": "1050px",
+        "name": "intermediate"
+      },
+      {
+        "value": "650px",
+        "name": "mobile"
+      }
+    ],
+    "typographyMeta": {
+      "body": {
+        "displayName": "System sans",
+        "purpose": "Intentional offline local UI stack."
+      }
+    }
+  },
+  "narrative": {
+    "donts": [
+      "Don't add decorative imagery, external fonts or network assets to this local visual system.",
+      "Don't replace borders and tonal grouping with decorative shadows or gradients.",
+      "Don't present nominal plan headroom or recurring candidates as confirmed cash forecasts or bills."
+    ],
+    "keyCharacteristics": [
+      "Familiar labelled controls and readable figures.",
+      "Flat bordered panels and restrained tonal grouping.",
+      "Inspectable comparisons with explicit financial caveats."
+    ],
+    "dos": [
+      "Do retain the light, practical palette and system font stack.",
+      "Do label financial figures, balance freshness, recurring estimates and fictional demo data explicitly.",
+      "Do keep chart labels outside the stretching SVG and provide inspectable evidence."
+    ],
+    "overview": "The confirmed direction is light and practical: a quiet off-white workspace, pale sage navigation and dark green actions. Generous reading space supports financial review. System fonts are an intentional choice for this offline local task UI. No decorative imagery, external fonts or network assets are used.",
+    "rules": [
+      {
+        "name": "The Figure Alignment Rule",
+        "section": "typography",
+        "body": "Keep financial amounts tabular and retain visible units and explanatory labels."
+      }
+    ],
+    "northStar": "The Practical Ledger"
+  },
+  "generatedAt": "2026-10-07T15:51:32.2699223Z",
+  "schemaVersion": 2,
+  "title": "Design System: Finance / personal"
+}
