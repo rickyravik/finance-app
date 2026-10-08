@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+const isDev = process.env.NODE_ENV !== "production";
 const config: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["node:sqlite"],
@@ -13,8 +14,9 @@ const config: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           {
             key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline'${
+              isDev ? " 'unsafe-eval'" : ""
+            }; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'`,
           },
         ],
       },
